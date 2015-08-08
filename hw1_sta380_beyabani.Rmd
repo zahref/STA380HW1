@@ -1,0 +1,724 @@
+---
+title: "Homework 1 STA380:P2"
+author: "Zahref Beyabani"
+date: "August 6, 2015"
+output: word_document
+---
+
+#Analyzing Vote Undercount within the GA2000 Dataset
+ 
+###Read dataset
+
+```{r}
+ga2000 = read.csv('https://raw.githubusercontent.com/jgscott/STA380/master/data/georgia2000.csv', row.names=1)
+```
+
+###Create a calculated attribute to hold the undercount numbers, and inspect the first few rows including undercount numbers of our dataset
+
+```{r}
+ga2000$vote_undercount=(ga2000$ballots-ga2000$votes)
+head(ga2000)
+```
+
+###Factorize the factor variables so they are visible to R
+
+```{r}
+ga2000$poor = as.factor(ga2000$poor)
+ga2000$urban = as.factor(ga2000$urban)
+ga2000$atlanta = as.factor(ga2000$atlanta)
+```
+
+###Load the ggplot2 library to facilitate making plots
+
+```{r}
+library(ggplot2)
+```
+
+###Create a percentage undercount Variable
+```{r}
+ga2000$pctUC = ((ga2000$vote_undercount/ga2000$ballots))
+```
+
+###Plot the rate of undercount versus voting medium
+
+```{r}
+plot(ga2000$equip, ga2000$pctUC, col="pink", ylab = "Rate of Vote Undercount in %", xlab = "Equip Type")
+```
+
+* This tells us the undercount percentage for each machine
+
+* We see that paper is the odd one out with not much variability
+
+    * ####Lets see how many times paper was used as a voting medium:
+
+```{r}
+summary(ga2000$equip)
+```
+
+* Paper has only been used twice so we can safely say there are not enough data points to make inferences on paper's contribution to rate of vote undercount
+
+* For the other three machines, however, we can say they are similar in how they contribute to the rate of undercount
+
+###Lets see if there's any connection with the county being classified as a poor one:
+
+###Plot the equipment vs undercount percentage with whether or not the county is identified as poor
+
+```{r}
+ggplot(ga2000, aes(y=ga2000$pctUC , col=poor, x=equip) )+geom_point(size=2, position=position_jitter(width=0.20))+ylab("Rate of Vote Undercount in %")+xlab("Equip Type")
+```
+
+* A reasonable conclusion is that counties that are identified as poor will have a higher rate of vote undercount regardless of the machine used
+
+###Now let's see if theres any connection with the percentage minority population living in that particular county and the vote undercount percentage
+
+```{r}
+ggplot(ga2000, aes(y=ga2000$pctUC , col=perAA, x=equip) )+geom_point(size=3, position=position_jitter(width=0.30))+ylab("Rate of Vote Undercount in %")+xlab("Equip Type")+scale_colour_gradient2(low="red", high="blue")
+```
+
+* Conclusion from the above plot : Minority status does not contribute to the vote undercount
+
+#____________________________________________________________
+
+
+
+#Returns analysis on a balanced, risky, and safe portfolio
+
+Using Monte-Carlo simulations, I will atempmt to analyze the returns on a perfectly balanced, a safe, and a risky portfolio (risk will be based on the stocks beta, and the variance of its returns) This will be done across 20 trading days. The dollar amount I will be simulating investing is $100,000.
+
+#### Importing required libraries
+
+```{r, include=FALSE, warnings=FALSE, messages=FALSE}
+library(mosaic)
+library(fImport)
+library(foreach)
+```
+
+#### Setting the random generator's seed to ensure reproducibility. Initialize the number of days variable to 20.
+
+```{r}
+n_days = 20
+set.seed(512)
+```
+
+#### Defining what stocks I want to analyze and, pulling the relevant data from Yahoo finance's API, for those stocks for the last 5 years.
+
+```{r}
+mystocks = c("SPY", "TLT", "LQD", "EEM", "VNQ")
+myprices = yahooSeries(mystocks, from='2010-01-01', to='2015-07-30')
+```
+
+#### A helper function for calculating percent returns from a Yahoo Series
+
+#### Once sourced to the console, it will be availble for use in our portfolios
+
+```{r}
+YahooPricesToReturns = function(series) {
+  mycols = grep('Adj.Close', colnames(series))
+  closingprice = series[,mycols]
+  N = nrow(closingprice)
+  percentreturn = as.data.frame(closingprice[2:N,]) / as.data.frame(closingprice[1:(N-1),]) - 1
+  mynames = strsplit(colnames(percentreturn), '.', fixed=TRUE)
+  mynames = lapply(mynames, function(x) return(paste0(x[1], ".PctReturn")))
+  colnames(percentreturn) = mynames
+  as.matrix(na.omit(percentreturn))
+}
+```
+
+#### Compute the returns from the closing prices
+
+```{r}
+myreturns = YahooPricesToReturns(myprices)
+```
+
+#### Now lets look at the riskiness of our individual Stocks:
+
+##### First fit the market model to each stock:
+
+```{r}
+lm_TLT = lm(myreturns[,2] ~ myreturns[,1])
+lm_LQD = lm(myreturns[,3] ~ myreturns[,1])
+lm_EEM = lm(myreturns[,4] ~ myreturns[,1])
+lm_VNQ = lm(myreturns[,5] ~ myreturns[,1])
+```
+
+##### Lets inspect the Betas of each stock:
+
+```{r}
+cat(paste("Beta of TLT",lm_TLT$coefficients[2]))
+cat(paste("Beta of LQD",lm_LQD$coefficients[2]))
+cat(paste("Beta of EEM",lm_EEM$coefficients[2]))
+cat(paste("Beta of VNQ",lm_VNQ$coefficients[2]))
+```
+
+* Interpretability of the Beta of a stock is as follows:
+
+"If a stock's price movements, or swings, are less than those of the market, then the beta value will be less than 1. Since increased volatility of stock price means more risk to the investor, it's reasonable to expect greater returns from stocks with betas over 1."
+
+TL;DR: Higher-beta stocks are more volatile and therefore more riskier. 
+
+* From the above output we can determine that VNQ and EEM are the most riskiest, and that TLT and LQD are the least riskiest. SPY is the fund that tracks the market, and it will have a beta = 1. 
+
+##### Along the same lines, lets inspect the variance of the historical returns for the above mentioned assets, to substantiate our insight from the betas:
+
+```{r}
+#Computations:
+
+##Varience of the returns
+varSPY = var(myreturns[,1])
+varTLT = var(myreturns[,2])
+varLQD = var(myreturns[,3])
+varEEM = var(myreturns[,4])
+varVNQ = var(myreturns[,5])
+
+#Outputs:
+cat(paste("Varience on the return percentage of SPY : "),varSPY)
+cat(paste("Varience on the return percentage of TLT : "),varTLT)
+cat(paste("Varience on the return percentage of LQD : "),varLQD)
+cat(paste("Varience on the return percentage of EEM : "),varEEM)
+cat(paste("Varience on the return percentage of VNQ : "),varVNQ)
+
+```
+
+* With this output its clear, our safest asset classes are those with the least varience and which also have lower betas, and our riskiest asset classes are those with the higher variences and higher betas. 
+
+* Financially this makes sesnse, as we expect returns on a risky asset to vary much more. 
+
+#### Based on these insights from the data lets build our portfolios.
+
+##### Safe Portfolio:
+
+* LQD - Lowest beta, and lowest variance which means lowest risk; __91__ % of my wealth goes here
+
+* TLT - 6% of my wealth here because because it is the next lower beta stock
+
+* SPY - 3% of my wealth here beacuase because it is the next lower beta stock after TLT.
+
+###### Selecting the returns from these stocks for the above mentioned safe portfolio:
+
+```{r}
+safe_assets_returns=myreturns[,c(1:3)]
+```
+
+###### Running a Monte-Carlo simulation to simulate 20 trading days 5000 times for the "safe asset classes portfolio", rebalancing the portfolio at the end of each day:
+
+```{r}
+set.seed(512)
+
+sim2 = foreach(i=1:5000, .combine='rbind') %do% {
+  totalwealth = 100000
+  weights = c(0.03, 0.06, 0.91)
+  holdings = weights * totalwealth
+  wealthtracker = rep(0, n_days) # Set up a placeholder to track total wealth
+  for(today in 1:n_days) {
+    return.today = resample(safe_assets_returns, 1, orig.ids=FALSE)
+    holdings = holdings + holdings*return.today
+    totalwealth = sum(holdings)
+    wealthtracker[today] = totalwealth
+    ##rebalancing the portfolio at the end of each trading day
+    holdings = weights * totalwealth
+  }
+  wealthtracker
+}
+```
+
+###### Now that the simulation has been run, lets see how well our asset classes did!
+
+###### Let us visualize the distribution of our profits
+```{r}
+hist(sim2[,n_days]- 100000)
+```
+
+###### Let's now inspect the 5% value at risk:
+
+```{r}
+quantile(sim2[,n_days], 0.05) - 100000
+```
+
+* Not bad! 5% of the time we will make a loss of $2249.12 or more
+
+#=================================================================
+
+##### 100% Balanced Portfolio across all asset classes:
+
+###### Running a Monte-Carlo simulation to simulate 20 trading days 5000 times for the balanced portfolio across all assets, rebalancing the portfolio at the end of each day:
+
+```{r}
+set.seed(512)
+sim1 = foreach(i=1:5000, .combine='rbind') %do% {
+  totalwealth = 100000
+  weights = c(0.2, 0.2, 0.2, 0.2, 0.2)
+  holdings = weights * totalwealth
+  wealthtracker = rep(0, n_days) # Set up a placeholder to track total wealth
+  for(today in 1:n_days) {
+    return.today = resample(myreturns, 1, orig.ids=FALSE)
+    holdings = holdings + holdings*return.today
+    totalwealth = sum(holdings)
+    wealthtracker[today] = totalwealth
+    ##rebalancing portfolio at the end of each trading day
+    holdings = weights * totalwealth
+  }
+  wealthtracker
+}
+```
+
+###### Now that the simulation has been run, lets see how well our asset classes did within the balanced portfolio!
+
+###### Let us visualize the distribution of our profits
+```{r}
+hist(sim1[,n_days]- 100000)
+```
+
+###### Let's now inspect the 5% value at risk:
+
+```{r}
+quantile(sim1[,n_days], 0.05) - 100000
+```
+
+* Okay, 5% of the time we will make a loss of $3900.53 or more, obviously we expected something like this, as we do better in the safe portfolio by about $1000.
+
+#=================================================================
+
+##### Risky Portfolio:
+
+* EEM - HIGHEST beta amongst all 5 which means highest risk, and it has the highest variance, so theres a potential for great returns, so __98__ % of my wealth goes here.
+
+* VNQ - 2% of my wealth here because it's the next riskiest asset
+
+###### Selecting the returns from these stocks for the above mentioned RISKY portfolio:
+
+```{r}
+risky_assets_returns=myreturns[,c(4:5)]
+```
+
+###### Running a Monte-Carlo simulation to simulate 20 trading days 5000 times for the risky portfolio, rebalancing the portfolio at the end of each day:
+
+```{r}
+set.seed(512)
+sim3 = foreach(i=1:5000, .combine='rbind') %do% {
+  totalwealth = 100000
+  weights = c(0.98,0.02)
+  holdings = weights * totalwealth
+  wealthtracker = rep(0, n_days) # Set up a placeholder to track total wealth
+  for(today in 1:n_days) {
+    return.today = resample(risky_assets_returns, 1, orig.ids=FALSE)
+    holdings = holdings + holdings*return.today
+    totalwealth = sum(holdings)
+    wealthtracker[today] = totalwealth
+    ##rebalancing portfolio at the end of each trading day
+    holdings = weights * totalwealth
+  }
+  wealthtracker
+}
+```
+
+###### Let us visualize the distribution of our profits
+
+```{r}
+hist(sim3[,n_days]- 100000)
+```
+
+###### Let's now inspect the 5% value at risk:
+
+```{r}
+quantile(sim3[,n_days], 0.05) - 100000
+```
+
+* Ouch! 5% of the time we will make a loss of $9990.48 or more; obviously we expected something like this, as we are choosing very volatile stocks compared to our balanced and safe portfolio.
+
+#____________________________________________________________
+
+# Clustering and PCA on the Wine Data Set
+
+#### Importing required libraries
+
+```{r, include=FALSE, warnings=FALSE, messages=FALSE}
+library(ggplot2)
+```
+
+### Reading in the data from the class' github page, and setting a global seed
+
+```{r}
+set.seed(512)
+wine = read.csv('https://raw.githubusercontent.com/jgscott/STA380/master/data/wine.csv', header=TRUE)
+```
+
+### Removing the last two columns as per the assginment statement, and using that dataset so we can perform unsupervised learning on it, also factoring the relevant factor variables (like quality)
+
+```{r}
+wine$quality = as.factor(wine$quality)
+wine_dim=wine[,c(1:11)]
+```
+
+###Scaling the numeric data to mean = 0 and s.d = 1
+
+```{r}
+wine_dim = scale(wine_dim, center=TRUE, scale=TRUE)
+```
+
+###Running the K-Means clustering algorithm, with 2 centers, 50 random initial centroids
+
+```{r}
+clust1 = kmeans(wine_dim, 2, nstart=500)
+```
+
+### Generating a plot of the result of the clustering algorithm 
+
+```{r}
+qplot(color, fill=factor(clust1$cluster), data = wine)
+```
+
+*This plot shows us the what the k-means clustering algorithm clustered to be in cluster 1 or 2, and whether or not the actual wine was a red wine or a white wine, so it looks like the attributes in cluster 1 most likely corresponds to properties of a red wine, and attributes of cluster 2 most likely correspond to the properties of a white wine.  
+
+###Tabular representation of the above plot
+
+```{r}
+t1=table(wine$color, clust1$cluster)
+t1
+```
+
+This is telling us the numerical accuracy of the clusters, i.e: Cluster 1 ensconsed 4854 wines, and Cluster 2 ensconsed 1643 wines. However, in cluster 1, it assigned 24 wines inaccurately, and 68 in cluster 2
+
+### Probablity table of the above result
+
+```{r}
+p1 = prop.table(t1, margin = 1)
+p1
+```
+
+* This is telling us the percentage accuracy with which each cluster classifies the wine.
+
+## Now lets try PCA on the dataset:
+
+## Running PCA on the wines data set, and plotting the first two Principal Computers along with the datapoints
+
+```{r}
+pcomps = prcomp(wine_dim)
+loadings = pcomps$rotation
+scores = pcomps$x
+qplot(scores[,1], scores[,2], xlab='Component 1', ylab='Component 2')
+```
+
+### The 2 principal components plotted against each other show the projections of the points on the first two principal component vectors. 
+
+### It appears as though there are two  groupings with some overlap, between the two principal components 
+
+### Lets superimpose our original colors of the wine onto our  Principal Components to see if the groupings were relevant to the color of the wine
+
+```{r}
+qplot(scores[,1], scores[,2], col=wine$color, xlab='Component 1', ylab='Component 2')
+```
+
+### The above plot shows us that the first two principal components do a stellar job at identifying the color of the wine, with some minimal misclassification
+
+
+```{r}
+qplot(scores[,1], fill=wine$color, xlab='Component 1', ylab='Count')
+```
+
+### This plot show us that just the first principle component does a decent job at predicting the wine color as it looks like it has identified two groupings, and the superimposition of the actual colors of the wines shows us that it has done a decent job. 
+
+### However, two principal components capture the groups well, as seen above.
+
+### A conclusion drawn from this is that both K-means clustering and PCA does a good job at classifying the color of the wine. 
+
+## Now lets tackle the wine quality classification!
+
+### Running the K-Means clustering algorithm, with 10 centers because , 50 random initial centroids
+
+```{r}
+set.seed(512)
+clust2 = kmeans(wine_dim, 10, nstart=50)
+```
+
+### Plotting the result from the k-means clustering on 10 clusters
+
+```{r}
+qplot(quality, fill=factor(clust2$cluster), data = wine)
+```
+
+* For quality, the K-means technique does not seem capable of sorting the wines accurately, as it bins each of the distinct quality wines into different clusters  which are not representative of the clusters
+
+### Tabular representation of the above plot
+
+```{r}
+t2=table(wine$quality, clust2$cluster)
+t2
+```
+
+* This is telling us the numerical accuracy of the clusters, there seems to be a very distributed grouping of wine quality amongst the indentified 10 clusters. 
+
+### Probablity table of the above result
+
+```{r}
+p2 = prop.table(t2, margin = 1)
+p2
+```
+
+* This is telling us the probabalistic accuracy of the clusters, we dont seem to acheive any good accuracy scores for any quality within any cluster.
+
+## K means clustering does not do a good job for grouping the wines into clusters that represent different wine qualities. 
+
+## Alright, Let's see how PCA does for quality
+
+### Running PCA, Again, on the wines data set, and plotting the first two Principal Computers along with the datapoints
+
+```{r}
+pcomps = prcomp(wine_dim)
+loadings = pcomps$rotation
+scores = pcomps$x
+qplot(scores[,1], scores[,2], xlab='Component 1', ylab='Component 2')
+```
+
+#### The 2 principal components plotted against each other show the projections of the points on the first two principal component vectors. 
+
+#### It appears as though there are two  groupings with some overlap, between the two principal components 
+
+#### Lets superimpose our original qualities of the wine onto our  Principal Components to see if the groupings were relevant to the qulaity of the wine.
+
+```{r}
+qplot(scores[,1], scores[,2], col=wine$quality, xlab='Component 1', ylab='Component 2')
+```
+
+### We see that two principal components do not do a good job at classifying the qualities of the wine. 
+
+## Conclusion :
+
+### Both algorithms are effective at discerning wine color, but not wine quality
+
+#____________________________________________________________
+
+# Market segmentation based on collected tweets data with features identified for each tweet.
+
+### Reading in the data from the class' github page, and setting a global seed
+
+```{r}
+tweets = read.csv("https://raw.githubusercontent.com/jgscott/STA380/master/data/social_marketing.csv",header = TRUE)
+set.seed(512)
+```
+
+###Deleting the first column from the dataset, as it does not provide a lot of value
+```{r}
+tweets = tweets[,-1]
+```
+
+###Scaling the data so it has a mean of 1 and s.d = 0
+
+```{r}
+tweets_scaled = scale(tweets, center=TRUE, scale=TRUE)
+```
+
+###Picking a good value of K for the k-means model by analyzing the within group sum of squares for the different numbers of clusters
+
+```{r}
+wss <- (nrow(tweets_scaled)-1)*sum(apply(tweets_scaled,2,var))
+for (i in 2:30) wss[i] <- sum(kmeans(tweets_scaled,centers=i)$withinss)
+plot(1:30, wss, type="b", xlab="Number of Clusters", ylab="Within groups sum of squares")
+```
+
+####Based on this plot, we can see that k=10 seems to be providing good interpretability while not being too complex of a model.
+
+###Running a K-means clustering technique with 10 centers on the scaled tweets dataset
+
+```{r}
+set.seed(512)
+clusttwits = kmeans(tweets_scaled, centers=10, nstart=50) 
+```
+
+####Unscale the dataset to see the true values of the cluster centers
+
+```{r}
+mu=attr(tweets_scaled,"scaled:center")
+sigma=attr(tweets_scaled,"scaled:scale")
+clusttwits$centers[1,]*sigma + mu
+```
+
+#### To interpret the cluster, we now bind the rows with the centers of the cluster and the average unscaled values.
+
+#### This gives us the true cluster mean, and how many standard deviations away from the feture mean it is (for each feature) 
+
+Cluster 1:
+
+```{r, results='hide'}
+rbind(clusttwits$center[1,],(clusttwits$center[1,]*sigma + mu))
+```
+
+Cluster 2:
+
+```{r, results='hide'}
+rbind(clusttwits$center[2,],(clusttwits$center[2,]*sigma + mu))
+```
+
+Cluster 3:
+
+```{r, results='hide'}
+rbind(clusttwits$center[3,],(clusttwits$center[3,]*sigma + mu))
+```
+
+Cluster 4:
+
+```{r, results='hide'}
+rbind(clusttwits$center[4,],(clusttwits$center[4,]*sigma + mu))
+```
+
+Cluster 5:
+
+```{r, results='hide'}
+rbind(clusttwits$center[5,],(clusttwits$center[5,]*sigma + mu))
+```
+
+Cluster 6:
+
+```{r, results='hide'}
+rbind(clusttwits$center[6,],(clusttwits$center[6,]*sigma + mu))
+```
+
+Cluster 7:
+
+```{r, results='hide'}
+rbind(clusttwits$center[7,],(clusttwits$center[7,]*sigma + mu))
+```
+
+Cluster 8:
+
+```{r, results='hide'}
+rbind(clusttwits$center[8,],(clusttwits$center[8,]*sigma + mu))
+```
+
+Cluster 9:
+
+```{r, results='hide'}
+rbind(clusttwits$center[9,],(clusttwits$center[9,]*sigma + mu))
+```
+
+Cluster 10:
+
+```{r, results='hide'}
+rbind(clusttwits$center[10,],(clusttwits$center[10,]*sigma + mu))
+```
+
+### How do we interpret this (cluster centers are in the appendix)?
+
+#### We will segment users based on these clusters' characteristics that seem significant.
+
+#### Significant is defined as a cluster center being 2 or more standard deviations away from the "global attribute mean"
+
+#### The second row gives the average number of tweets for those features by each cluster that we are inspecting
+
+
+###Here are the market segments that have been identified based on the analysis detailed above within the tweets dataset.
+
+### Cluster 1:
+
+    1. Significant features: Online gaming, college uni, sports_playing.
+    + I would classify this cluster as the college going males cluster. 
+    + This is because these topics are most likely to be relevant to young males starting out their university education. They are probably researching and talking about university/college related activities, and one easy hobby to retain when in college (Gaming)
+    
+### Cluster 2:
+
+    2. There are no significant features in this cluster based on the evaluation criteria
+
+### Cluster 3:
+
+    3. There are no significant features in this cluster based on the evaluation criteria 
+
+### Cluster 4:
+
+    4. Significant features: news, automative.
+    + I would classify this cluster as the individuals who are interested in current events and automotive enthusiasts cluster. Perhaps even interested in news related to cars. This is likely to be males who are not fathers as they do not seem to be tweeting about parenting.
+
+### Cluster 5:
+
+  5. Significant features: spam and adult.
+    + This is clearly the bots who spam segemnt.
+    
+### Cluster 6:
+
+  6. Significant features: tvfilm and art.
+    + This is the creative folks segment as the tweets in this cluster seem to relate mostly to TV & Flim, which is typical of people critiquing or talking about the arts, and they also tweet about art. One could also resonably assume that these are the individuals interested in Indie-Films.
+
+### Cluster 7:
+
+  7. Significant features: food, family, school, sports_fandom, religion, parenting.
+    + This cluster clearly identifies the parents segment. The features are self explanatory. Except maybe for sports_fandom which could represent the dads who are also into sports.
+
+### Cluster 8:
+
+  8. Significant features: personal fitness, health nutrition, outdoors, photo_sharing.
+    + This cluster seems to be of fitness and health conscious people as the tweets revolve around fitness & health. Typical crossfit junkies.
+
+### Cluster 9:
+
+  9. Significant features:travel, politics, computers.
+    + This cluster identifies the segment of the people who are young profesionals just out of college, possibly in the tech industries (the tweets of the computers), and who are looking to get out and travel.
+
+### Cluster 10:
+
+  10. Significant features: photo sharing, beauty, cooking, fashion.
+    + This cluster seems to segment the stereo-typical socialite, social media involved woman on the internet. We could infer that these women are not married or moms as there are not a significant amount of tweets regarding parenting within this cluster.
+
+
+
+
+### Apendix:
+
+#### Cluster Centers
+
+Cluster 1:
+
+```{r}
+rbind(clusttwits$center[1,],(clusttwits$center[1,]*sigma + mu))
+```
+
+Cluster 2:
+
+```{r}
+rbind(clusttwits$center[2,],(clusttwits$center[2,]*sigma + mu))
+```
+
+Cluster 3:
+
+```{r}
+rbind(clusttwits$center[3,],(clusttwits$center[3,]*sigma + mu))
+```
+
+Cluster 4:
+
+```{r}
+rbind(clusttwits$center[4,],(clusttwits$center[4,]*sigma + mu))
+```
+
+Cluster 5:
+
+```{r}
+rbind(clusttwits$center[5,],(clusttwits$center[5,]*sigma + mu))
+```
+
+Cluster 6:
+
+```{r}
+rbind(clusttwits$center[6,],(clusttwits$center[6,]*sigma + mu))
+```
+
+Cluster 7:
+
+```{r}
+rbind(clusttwits$center[7,],(clusttwits$center[7,]*sigma + mu))
+```
+
+Cluster 8:
+
+```{r}
+rbind(clusttwits$center[8,],(clusttwits$center[8,]*sigma + mu))
+```
+
+Cluster 9:
+
+```{r}
+rbind(clusttwits$center[9,],(clusttwits$center[9,]*sigma + mu))
+```
+
+Cluster 10:
+
+```{r}
+rbind(clusttwits$center[10,],(clusttwits$center[10,]*sigma + mu))
+```
